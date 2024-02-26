@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function transfer(address to, uint256 amount) external returns (bool);
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+}
+
+contract DecentralizedExchange {
+    address public admin;
+    mapping(address => mapping(address => uint256)) public tokens; // token => user => balance
+
+    event Deposit(address indexed user, address indexed token, uint256 amount);
+    event Withdraw(address indexed user, address indexed token, uint256 amount);
+    event Trade(address indexed user, address indexed tokenGive, uint256 amountGive, address indexed tokenGet, uint256 amountGet);
+
+    constructor() {
+        admin = msg.sender;
+    }
+
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin can call this function");
+        _;
+    }
+
+    function deposit(address _token, uint256 _amount) external {
+        require(_amount > 0, "Amount must be greater than 0");
+        require(IERC20(_token).transferFrom(msg.sender, address(this), _amount), "Transfer failed");
+
+        tokens[_token][msg.sender] += _amount;
+        emit Deposit(msg.sender, _token, _amount);
+    }
+
+    function withdraw(address _token, uint256 _amount) external {
+        require(_amount > 0, "Amount must be greater than 0");
+        require(tokens[_token][msg.sender] >= _amount, "Insufficient balance");
+
+        tokens[_token][msg.sender] -= _amount;
+        require(IERC20(_token).transfer(msg.sender, _amount), "Transfer failed");
+        emit Withdraw(msg.sender, _token, _amount);
+    }
+
+    function trade(address _tokenGive, uint256 _amountGive, address _tokenGet, uint256 _amountGet) external {
+        require(_amountGive > 0 && _amountGet > 0, "Amount must be greater than 0");
+        require(tokens[_tokenGet][msg.sender] >= _amountGet, "Insufficient balance");
+
+        uint256 amountNeed = (_amountGet * _amountGive) / _amountGet;
+        require(tokens[_tokenGive][msg.sender] >= amountNeed, "Insufficient balance");
+
+        tokens[_tokenGive][msg.sender] -= amountNeed;
+        tokens[_tokenGive][msg.sender] += _amountGive;
+        tokens[_tokenGet][msg.sender] -= _amountGet;
+        tokens[_tokenGet][msg.sender] += amountNeed;
+
+        emit Trade(msg.sender, _tokenGive, _amountGive, _tokenGet, _amountGet);
+    }
+
+    function changeAdmin(address _newAdmin) external onlyAdmin {
+        admin = _newAdmin;
+    }
+}
